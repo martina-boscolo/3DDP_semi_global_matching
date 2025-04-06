@@ -1,0 +1,23 @@
+monocular algo not abe to recover the scale 
+we compare sgd with modern thing tomorreow we will se 
+
+aggregation cost is a tensor 
+you sum over the number of paths
+
+
+
+last number on execution is the max disparity 
+
+at  the end you will see the sispatrity map 
+
+left to right and right to left in order to recaver the sclae function 
+
+no need to get so goood result, maybe you can not, 
+get qualitative and quantitatitave result, reaonably 
+
+try to avoid nested loops, your code havs to be very efficient. 
+
+you also have to provide a small reporto
+explaining aproach and problem incountred, 
+provide numerical result and qualitative results like images 
+important not to be slow otherwise slightly pealized 
