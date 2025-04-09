@@ -1,0 +1,42 @@
+void SGM::compute_path_cost(int direction_y, int direction_x, int cur_y, int cur_x, int cur_path)
+{
+    // Boundary check: if pixel is on image border, simply copy cost from C(p, d)
+    if(cur_y == pw_.north || cur_y == pw_.south || cur_x == pw_.east || cur_x == pw_.west)
+    {
+        for (int d = 0; d < disparity_range_; ++d)
+        {
+            path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d];
+        }
+        return;
+    }
+
+    int prev_y = cur_y + direction_y;
+    int prev_x = cur_x + direction_x;
+
+    unsigned long min_prev_cost = *min_element(path_cost_[cur_path][prev_y][prev_x].begin(),
+                                               path_cost_[cur_path][prev_y][prev_x].end());
+
+    for (int d = 0; d < disparity_range_; ++d)
+    {
+        // Lr(p-r, d)
+        unsigned long prev_d = path_cost_[cur_path][prev_y][prev_x][d];
+
+        // Lr(p-r, d-1)
+        unsigned long prev_d_minus = (d > 0) ? path_cost_[cur_path][prev_y][prev_x][d - 1] + p1_ : ULONG_MAX;
+
+        // Lr(p-r, d+1)
+        unsigned long prev_d_plus = (d < disparity_range_ - 1) ? path_cost_[cur_path][prev_y][prev_x][d + 1] + p1_ : ULONG_MAX;
+
+        // Lr(p-r, k) + P2 (already have min_prev_cost)
+        unsigned long prev_other = min_prev_cost + p2_;
+
+        // Compute minimum
+        unsigned long prev_min = min({prev_d, prev_d_minus, prev_d_plus, prev_other});
+
+        // Subtract min_k L_r(p-r, k)
+        prev_min -= min_prev_cost;
+
+        // Add data cost
+        path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d] + prev_min;
+    }
+}
