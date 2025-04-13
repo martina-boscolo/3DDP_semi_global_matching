@@ -202,8 +202,8 @@ namespace sgm
       {
           path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d];
       }
+      return;
     }
-
     else
     {
       //Please fill me!
@@ -347,8 +347,11 @@ namespace sgm
       cout <<"\nAggregating costs" <<endl;
       disp_ = Mat(Size(width_, height_), CV_8UC1, Scalar::all(0));
       int n_valid = 0;
-          // To store disparity pairs for scaling factor estimation
-    vector<pair<float, float>> disparity_pairs;
+
+      // To store disparity pairs for scaling factor estimation
+    vector<float> d_sgm;  // High-confidence disparities from SGM
+    vector<float> d_mono; // Corresponding unscaled disparities from mono_
+
 
       for (int row = 0; row < height_; ++row)
       {
@@ -379,15 +382,12 @@ namespace sgm
                 /////////////////////////////////////////////////////////////////////////////////////////
 
                 
-                // you have to select disparity
-
-                // select coeficien to cale ack monocular disparity map 
-                
+                // Add the pair (d_sgm, d_mono) to the pool for scaling factor estimation
                 float scaled_disparity = static_cast<float>(smallest_disparity);
                 float unscaled_disparity = static_cast<float>(mono_.at<uchar>(row, col));
-                disparity_pairs.emplace_back(scaled_disparity, unscaled_disparity);
+                d_sgm.push_back(scaled_disparity);
+                d_mono.push_back(unscaled_disparity);
                 n_valid++;
-                
                 
                 /////////////////////////////////////////////////////////////////////////////////////////
               }
@@ -404,24 +404,26 @@ namespace sgm
       // disparities.
       /////////////////////////////////////////////////////////////////////////////////////////
 
-      if (!disparity_pairs.empty())
+      if (!d_sgm.empty())
     {
-        // Compute the scaling factor using least squares
-        float sum_scaled = 0.0f, sum_unscaled = 0.0f, sum_scaled_unscaled = 0.0f, sum_scaled_squared = 0.0f;
-        for (const auto &pair : disparity_pairs)
+        // Construct the matrices A and b for the least squares problem
+        Eigen::MatrixXf A(n_valid, 2); // A is an n x 2 matrix
+        Eigen::VectorXf b(n_valid);   // b is an n x 1 vector
+
+        for (int i = 0; i < n_valid; ++i)
         {
-            float scaled = pair.first;
-            float unscaled = pair.second;
-            sum_scaled += scaled;
-            sum_unscaled += unscaled;
-            sum_scaled_unscaled += scaled * unscaled;
-            sum_scaled_squared += scaled * scaled;
+            A(i, 0) = d_mono[i]; // First column is d_mono
+            A(i, 1) = 1.0f;      // Second column is 1
+            b(i) = d_sgm[i];     // b is d_sgm
         }
 
-        float scale_factor = (n_valid * sum_scaled_unscaled - sum_scaled * sum_unscaled) /
-                             (n_valid * sum_scaled_squared - sum_scaled * sum_scaled);
+        // Solve for x = [h, k]^T using the least squares formula
+        Eigen::Vector2f x = (A.transpose() * A).inverse() * A.transpose() * b;
 
-        // Adjust low-confidence disparities using the scale factor
+        float h = x(0); // Scaling factor
+        float k = x(1); // Offset
+
+        // Adjust low-confidence disparities using the scaling factor
         for (int row = 0; row < height_; ++row)
         {
             for (int col = 0; col < width_; ++col)
@@ -429,14 +431,12 @@ namespace sgm
                 if (inv_confidence_[row][col] <= 0 || inv_confidence_[row][col] >= conf_thresh_)
                 {
                     float unscaled_disparity = static_cast<float>(mono_.at<uchar>(row, col));
-                    float adjusted_disparity = unscaled_disparity * scale_factor;
+                    float adjusted_disparity = h * unscaled_disparity + k;
                     disp_.at<uchar>(row, col) = static_cast<uchar>(adjusted_disparity * 255.0 / disparity_range_);
                 }
             }
         }
     }
-      
-      
       
       
       
