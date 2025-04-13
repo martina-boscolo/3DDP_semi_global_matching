@@ -197,18 +197,59 @@ namespace sgm
     if(cur_y == pw_.north || cur_y == pw_.south || cur_x == pw_.east || cur_x == pw_.west)
     {
       //Please fill me!
-      siply copy if firstpixel, no penalty 
+      // Simply copy the cost from C(p, d) for all disparities
+      for (int d = 0; d < disparity_range_; ++d)
+      {
+          path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d];
+      }
     }
 
     else
     {
       //Please fill me!
-      look up the previous pixel in the path direction
+      //look up the previous pixel in the path direction
       // and compute the cost for all disparities
-      small penalty if disparity conly 1
+     // small penalty if disparity conly 1
       // and big penalty if disparity is more than 1
+          // Look up the previous pixel in the path direction
+    int prev_y = cur_y + direction_y;
+    int prev_x = cur_x + direction_x;
+
+    if (prev_y < 0 || prev_y >= height_ || prev_x < 0 || prev_x >= width_) {
+        return; // Skip processing if out of bounds
+    }
+
+    cout << "cur_y: " << cur_y << ", cur_x: " << cur_x << endl;
+    cout << "prev_y: " << prev_y << ", prev_x: " << prev_x << endl;
+
+    // Find the minimum cost for the previous pixel across all disparities
+    unsigned long min_prev_cost = *min_element(path_cost_[cur_path][prev_y][prev_x].begin(),
+                                               path_cost_[cur_path][prev_y][prev_x].end());
+
+    // Compute the cost for all disparities
+    for (int d = 0; d < disparity_range_; ++d)
+    {
+        // Lr(p-r, d)
+        unsigned long prev_d = path_cost_[cur_path][prev_y][prev_x][d];
+
+        // Lr(p-r, d-1)
+        unsigned long prev_d_minus = (d > 0) ? path_cost_[cur_path][prev_y][prev_x][d - 1] + p1_ : ULONG_MAX;
+
+        // Lr(p-r, d+1)
+        unsigned long prev_d_plus = (d < disparity_range_ - 1) ? path_cost_[cur_path][prev_y][prev_x][d + 1] + p1_ : ULONG_MAX;
+
+        // Lr(p-r, k) + P2 (already have min_prev_cost)
+        unsigned long prev_other = min_prev_cost + p2_;
+
+        // Compute the minimum cost for the current disparity
+        unsigned long prev_min = min({prev_d, prev_d_minus, prev_d_plus, prev_other});
+
+        // Subtract min_k L_r(p-r, k) and add the data cost
+        path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d] + prev_min - min_prev_cost;
+    }
     }
     
+    cout <<"\ncompute_path_cost" <<endl;
     
     /////////////////////////////////////////////////////////////////////////////////////////
   }
@@ -230,14 +271,41 @@ namespace sgm
       int dir_y = paths_[cur_path].direction_y;
       
       int start_x, start_y, end_x, end_y, step_x, step_y;
+      if (dir_x == 1) {
+        start_x = 0;
+        end_x = width_;
+        step_x = 1;
+    } else if (dir_x == -1) {
+        start_x = width_ - 1;
+        end_x = -1;
+        step_x = -1;
+    } else {
+        start_x = 0;
+        end_x = width_;
+        step_x = 1;
+    }
+
+    if (dir_y == 1) {
+        start_y = 0;
+        end_y = height_;
+        step_y = 1;
+    } else if (dir_y == -1) {
+        start_y = height_ - 1;
+        end_y = -1;
+        step_y = -1;
+    } else {
+        start_y = 0;
+        end_y = height_;
+        step_y = 1;
+    }
       
-//      for(int y = start_y; y != end_y ; y+=step_y)
-//      {
-//        for(int x = start_x; x != end_x ; x+=step_x)
-//        {
-//          compute_path_cost(dir_y, dir_x, y, x, cur_path);
-//        }
-//      }
+     for(int y = start_y; y != end_y ; y+=step_y)
+     {
+       for(int x = start_x; x != end_x ; x+=step_x)
+       {
+         compute_path_cost(dir_y, dir_x, y, x, cur_path);
+       }
+     }
       
       /////////////////////////////////////////////////////////////////////////////////////////
     }
@@ -276,8 +344,12 @@ namespace sgm
   {
       calculate_cost_hamming();
       aggregation();
+      cout <<"\nAggregating costs" <<endl;
       disp_ = Mat(Size(width_, height_), CV_8UC1, Scalar::all(0));
       int n_valid = 0;
+          // To store disparity pairs for scaling factor estimation
+    vector<pair<float, float>> disparity_pairs;
+
       for (int row = 0; row < height_; ++row)
       {
           for (int col = 0; col < width_; ++col)
@@ -307,11 +379,14 @@ namespace sgm
                 /////////////////////////////////////////////////////////////////////////////////////////
 
                 
-                you have to select disparity
+                // you have to select disparity
 
-                select coeficien to cale ack monocular disparity map 
+                // select coeficien to cale ack monocular disparity map 
                 
-                
+                float scaled_disparity = static_cast<float>(smallest_disparity);
+                float unscaled_disparity = static_cast<float>(mono_.at<uchar>(row, col));
+                disparity_pairs.emplace_back(scaled_disparity, unscaled_disparity);
+                n_valid++;
                 
                 
                 /////////////////////////////////////////////////////////////////////////////////////////
@@ -329,7 +404,37 @@ namespace sgm
       // disparities.
       /////////////////////////////////////////////////////////////////////////////////////////
 
-      
+      if (!disparity_pairs.empty())
+    {
+        // Compute the scaling factor using least squares
+        float sum_scaled = 0.0f, sum_unscaled = 0.0f, sum_scaled_unscaled = 0.0f, sum_scaled_squared = 0.0f;
+        for (const auto &pair : disparity_pairs)
+        {
+            float scaled = pair.first;
+            float unscaled = pair.second;
+            sum_scaled += scaled;
+            sum_unscaled += unscaled;
+            sum_scaled_unscaled += scaled * unscaled;
+            sum_scaled_squared += scaled * scaled;
+        }
+
+        float scale_factor = (n_valid * sum_scaled_unscaled - sum_scaled * sum_unscaled) /
+                             (n_valid * sum_scaled_squared - sum_scaled * sum_scaled);
+
+        // Adjust low-confidence disparities using the scale factor
+        for (int row = 0; row < height_; ++row)
+        {
+            for (int col = 0; col < width_; ++col)
+            {
+                if (inv_confidence_[row][col] <= 0 || inv_confidence_[row][col] >= conf_thresh_)
+                {
+                    float unscaled_disparity = static_cast<float>(mono_.at<uchar>(row, col));
+                    float adjusted_disparity = unscaled_disparity * scale_factor;
+                    disp_.at<uchar>(row, col) = static_cast<uchar>(adjusted_disparity * 255.0 / disparity_range_);
+                }
+            }
+        }
+    }
       
       
       

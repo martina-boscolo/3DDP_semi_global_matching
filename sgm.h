@@ -24,6 +24,7 @@ namespace sgm
     int direction_x;
     int direction_y;
   };
+
   struct processing_window
   {
     int east;
@@ -32,6 +33,7 @@ namespace sgm
     int south;
 
   };
+  
   class SGM
   {
 
