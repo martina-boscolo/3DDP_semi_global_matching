@@ -203,7 +203,7 @@ namespace sgm
   {
     // For first pixels in a path, we initialize path costs with the matching costs
     // No aggregation from previous pixels since this is the beginning of the path
-    for (int d = 0; d < disparity_range_; d++)
+    for (unsigned int d = 0; d < disparity_range_; d++)
     {
       path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d];
     }
@@ -219,7 +219,7 @@ namespace sgm
     if (prev_y < 0 || prev_y >= height_ || prev_x < 0 || prev_x >= width_) {
     cout << "Out of bounds: cur_y=" << cur_y << ", cur_x=" << cur_x << ", prev_y=" << prev_y << ", prev_x=" << prev_x << endl;
       // Handle edge case - just copy costs without aggregation
-      for (int d = 0; d < disparity_range_; d++) {
+      for ( unsigned int d = 0; d < disparity_range_; d++) {
         path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d];
       }
       return;
@@ -229,28 +229,22 @@ namespace sgm
     best_prev_cost = path_cost_[cur_path][prev_y][prev_x][0];
     
     // For each possible disparity value
-    for (int d = 0; d < disparity_range_; d++)
+    for (unsigned int d = 0; d < disparity_range_; d++)
     {
       // Get the pixel cost for current pixel at current disparity
       unsigned long pixel_cost = cost_[cur_y][cur_x][d];
       
-      // Find minimum cost from previous pixel across all disparities
-     // best_prev_cost = path_cost_[cur_path][prev_y][prev_x][0];
-      // for (int d_p = 1; d_p < disparity_range_; d_p++)
-      // {
-      //   if (path_cost_[cur_path][prev_y][prev_x][d_p] < best_prev_cost)
-      //     best_prev_cost = path_cost_[cur_path][prev_y][prev_x][d_p];
-      // }
+      prev_cost = path_cost_[cur_path][prev_y][prev_x][d];
       
       // Calculate costs with different penalties
-      no_penalty_cost = path_cost_[cur_path][prev_y][prev_x][d];
+      no_penalty_cost = prev_cost;
       
       // Small penalty cost for disparity changes of 1
       small_penalty_cost = p1_;
       if (d > 0)
         small_penalty_cost += path_cost_[cur_path][prev_y][prev_x][d-1];
       else
-        small_penalty_cost += path_cost_[cur_path][prev_y][prev_x][d];
+        small_penalty_cost += prev_cost;
         
       if (d < disparity_range_ - 1)
         small_penalty_cost = std::min(small_penalty_cost, p1_ + path_cost_[cur_path][prev_y][prev_x][d+1]);
@@ -341,7 +335,7 @@ namespace sgm
           unsigned long min_on_path = path_cost_[path][row][col][0];
           int disp =  0;
 
-          for(int d = 0; d<disparity_range_; d++)
+          for(unsigned int d = 0; d<disparity_range_; d++)
           {
             aggr_cost_[row][col][d] += path_cost_[path][row][col][d];
             if (path_cost_[path][row][col][d]<min_on_path)
@@ -368,9 +362,9 @@ namespace sgm
       disp_ = Mat(Size(width_, height_), CV_8UC1, Scalar::all(0));
       int n_valid = 0;
 
-      // To store disparity pairs for scaling factor estimation
-      vector<float> sgm_disparities; 
-      vector<float> mono_disparities; 
+      int estimated_capacity = (width_ * height_) / 3;  // Assume roughly 1/3 of pixels have good confidence
+      Eigen::VectorXf sgm_disparities(estimated_capacity);
+      Eigen::VectorXf mono_disparities(estimated_capacity);
 
       for (int row = 0; row < height_; ++row)
       {
@@ -400,10 +394,16 @@ namespace sgm
                 // to estimate the unknown scale factor.    
                 /////////////////////////////////////////////////////////////////////////////////////////
               
-                  // Store the SGM disparity and the mono disparity as a pair
-                  sgm_disparities.push_back(smallest_disparity);
-                  mono_disparities.push_back(mono_.at<uchar>(row, col));
-                  n_valid++;  // Count valid disparity pairs
+                  // Resize vectors if needed (this is dynamic resizing)
+                if (n_valid >= sgm_disparities.size()) {
+                  sgm_disparities.conservativeResize(sgm_disparities.size() * 2);
+                  mono_disparities.conservativeResize(mono_disparities.size() * 2);
+              }
+              
+              // Store the SGM disparity and the mono disparity directly in Eigen vectors
+              sgm_disparities(n_valid) = static_cast<float>(smallest_disparity);
+              mono_disparities(n_valid) = static_cast<float>(mono_.at<uchar>(row, col));
+              n_valid++;
       
     
                 /////////////////////////////////////////////////////////////////////////////////////////
@@ -421,41 +421,42 @@ namespace sgm
       // disparities.
       /////////////////////////////////////////////////////////////////////////////////////////
 
-      if (!sgm_disparities.empty())
-    {
-        // Construct the matrices A and b for the least squares problem
-        Eigen::MatrixXf A(n_valid, 2); // A is an n x 2 matrix
-        Eigen::VectorXf b(n_valid);   // b is an n x 1 vector
-
-        cout << "Number of valid disparity pairs: " << n_valid << endl;
-
-        for (int i = 0; i < n_valid; ++i)
-        {
-            A(i, 0) = mono_disparities[i]; // First column is mono_disparities
-            A(i, 1) = 1.0f;      // Second column is 1
-            b(i) = sgm_disparities[i];     // b is sgm_disparities
-        }
-
-        // Solve for x = [h, k]^T using the least squares formula
-        Eigen::Vector2f x = (A.transpose() * A).inverse() * A.transpose() * b;
-
-        float h = x(0); // Scaling factor
-        float k = x(1); // Offset
-
-        // Adjust low-confidence disparities using the scaling factor
-        for (int row = 0; row < height_; ++row)
-        {
-            for (int col = 0; col < width_; ++col)
-            {
-                if (inv_confidence_[row][col] <= 0 || inv_confidence_[row][col] >= conf_thresh_)
-                {
-                    float unscaled_disparity = static_cast<float>(mono_.at<uchar>(row, col));
-                    float adjusted_disparity = h * unscaled_disparity + k;
-                    disp_.at<uchar>(row, col) = static_cast<uchar>(adjusted_disparity * 255.0 / disparity_range_);
-                }
-            }
-        }
-    }
+      if (n_valid > 0)
+      {
+          // Trim vectors to actual size used
+          sgm_disparities.conservativeResize(n_valid);
+          mono_disparities.conservativeResize(n_valid);
+          
+          cout << "Number of valid disparity pairs: " << n_valid << endl;
+  
+          // Construct the matrices A and b for the least squares problem directly
+          Eigen::MatrixXf A(n_valid, 2);
+          Eigen::VectorXf b = sgm_disparities;  // Already in the right format
+  
+          // Set up matrix A more efficiently
+          A.col(0) = mono_disparities;
+          A.col(1).setOnes();
+  
+          // Solve for x = [h, k]^T using the least squares formula
+          Eigen::Vector2f x = (A.transpose() * A).inverse() * A.transpose() * b;
+  
+          float h = x(0); // Scaling factor
+          float k = x(1); // Offset
+  
+          // Adjust low-confidence disparities using the scaling factor
+          for (int row = 0; row < height_; ++row)
+          {
+              for (int col = 0; col < width_; ++col)
+              {
+                  if (inv_confidence_[row][col] <= 0 || inv_confidence_[row][col] >= conf_thresh_)
+                  {
+                      float unscaled_disparity = static_cast<float>(mono_.at<uchar>(row, col));
+                      float adjusted_disparity = h * unscaled_disparity + k;
+                      disp_.at<uchar>(row, col) = static_cast<uchar>(adjusted_disparity * 255.0 / disparity_range_);
+                  }
+              }
+          }
+      }
       
       
       
