@@ -59,7 +59,6 @@ namespace sgm
     pw_.south = height_ - window_height_/2;
     pw_.west = window_width_/2;
     pw_.east = width_ - window_height_/2;
-    cout<< "north: " << pw_.north << " south: " << pw_.south << " west: " << pw_.west << " east: " << pw_.east << endl;
     init_paths();
     cost_.resize(height_, ul_array2D(width_, ul_array(disparity_range_)));
     inv_confidence_.resize(height_, vector<float>(width_));
@@ -79,8 +78,6 @@ namespace sgm
         if (i==0 && j==0)
           continue;
         paths_.push_back({directions[i], directions[j]});
-        cout << "Path " << paths_.size()-1 << ": ";
-        cout << paths_[paths_.size()-1].direction_x << " " << paths_[paths_.size()-1].direction_y << endl;
         
       }
     }
@@ -182,287 +179,285 @@ namespace sgm
 
   void SGM::compute_path_cost(int direction_y, int direction_x, int cur_y, int cur_x, int cur_path)
   {
-    unsigned long prev_cost, best_prev_cost, no_penalty_cost, penalty_cost, 
-                  small_penalty_cost, big_penalty_cost;
+    unsigned long prev_cost, best_prev_cost, no_penalty_cost, penalty_cost,
+        small_penalty_cost, big_penalty_cost;
 
     //////////////////////////// Code to be completed (1/4) /////////////////////////////////
-    // Complete the compute_path_cost() function that, given: 
-    // i) a single pixel p defined by its coordinates cur_x and cur_y; 
-    // ii) a path with index cur_path (cur_path=0,1,..., PATHS_PER_SCAN - 1, a path for 
+    // Complete the compute_path_cost() function that, given:
+    // i) a single pixel p defined by its coordinates cur_x and cur_y;
+    // ii) a path with index cur_path (cur_path=0,1,..., PATHS_PER_SCAN - 1, a path for
     //     each direction), and;
-    // iii) the direction increments direction_x and direction_y associated with the path 
-    //      with index cur_path (that are the dx,dy increments to move along the path 
-    //      direction, both can be -1, 0, or 1), 
-    // should compute the path cost for p for all the possible disparities d from 0 to 
-    // disparity_range_ (excluded, already defined). The output should be stored in the 
+    // iii) the direction increments direction_x and direction_y associated with the path
+    //      with index cur_path (that are the dx,dy increments to move along the path
+    //      direction, both can be -1, 0, or 1),
+    // should compute the path cost for p for all the possible disparities d from 0 to
+    // disparity_range_ (excluded, already defined). The output should be stored in the
     // tensor (already allocated) path_cost_[cur_path][cur_y][cur_x][d], for all possible d.
     /////////////////////////////////////////////////////////////////////////////////////////
 
-  // if the processed pixel is the first:
-  if(cur_y == pw_.north || cur_y == pw_.south || cur_x == pw_.east || cur_x == pw_.west)
-  {
-    // For first pixels in a path, we initialize path costs with the matching costs
-    // No aggregation from previous pixels since this is the beginning of the path
-    for (unsigned int d = 0; d < disparity_range_; d++)
+    // if the processed pixel is the first:
+    if (cur_y == pw_.north || cur_y == pw_.south || cur_x == pw_.east || cur_x == pw_.west)
     {
-      path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d];
-    }
-  }
-  else
-  {
-    // For non-first pixels, we need to aggregate costs from previous pixel
-    int prev_y = cur_y - direction_y;
-    int prev_x = cur_x - direction_x;
-
-    //TODO: remo this, no more needed after fixing aggregation    
-    // Check boundaries to prevent segmentation fault
-    if (prev_y < 0 || prev_y >= height_ || prev_x < 0 || prev_x >= width_) {
-    cout << "Out of bounds: cur_y=" << cur_y << ", cur_x=" << cur_x << ", prev_y=" << prev_y << ", prev_x=" << prev_x << endl;
-      // Handle edge case - just copy costs without aggregation
-      for ( unsigned int d = 0; d < disparity_range_; d++) {
+      // For first pixels in a path, we initialize path costs with the matching costs
+      // No aggregation from previous pixels since this is the beginning of the path
+      for (unsigned int d = 0; d < disparity_range_; d++)
+      {
         path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d];
       }
-      return;
     }
-
-    // Pre-compute the best previous cost for efficiency
-    best_prev_cost = path_cost_[cur_path][prev_y][prev_x][0];
-    
-    // For each possible disparity value
-    for (unsigned int d = 0; d < disparity_range_; d++)
+    else
     {
-      // Get the pixel cost for current pixel at current disparity
-      unsigned long pixel_cost = cost_[cur_y][cur_x][d];
-      
-      prev_cost = path_cost_[cur_path][prev_y][prev_x][d];
-      
-      // Calculate costs with different penalties
-      no_penalty_cost = prev_cost;
-      
-      // Small penalty cost for disparity changes of 1
-      small_penalty_cost = p1_;
-      if (d > 0)
-        small_penalty_cost += path_cost_[cur_path][prev_y][prev_x][d-1];
-      else
-        small_penalty_cost += prev_cost;
-        
-      if (d < disparity_range_ - 1)
-        small_penalty_cost = std::min(small_penalty_cost, p1_ + path_cost_[cur_path][prev_y][prev_x][d+1]);
-      
-      // Big penalty cost for larger disparity changes
-      big_penalty_cost = p2_ + best_prev_cost;
-      
-      // Take the minimum of all costs
-      penalty_cost = std::min(no_penalty_cost, std::min(small_penalty_cost, big_penalty_cost));
-      
-      // Compute final path cost for this pixel, disparity and direction
-      path_cost_[cur_path][cur_y][cur_x][d] = pixel_cost + penalty_cost;
+      // For non-first pixels, we need to aggregate costs from previous pixel
+      int prev_y = cur_y - direction_y;
+      int prev_x = cur_x - direction_x;
+
+      // TODO: remo this, no more needed after fixing aggregation
+      //  Check boundaries to prevent segmentation fault
+      if (prev_y < 0 || prev_y >= height_ || prev_x < 0 || prev_x >= width_)
+      {
+        cout << "Out of bounds: cur_y=" << cur_y << ", cur_x=" << cur_x << ", prev_y=" << prev_y << ", prev_x=" << prev_x << endl;
+        // Handle edge case - just copy costs without aggregation
+        for (unsigned int d = 0; d < disparity_range_; d++)
+        {
+          path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d];
+        }
+        return;
+      }
+
+      // Pre-compute the best previous cost for efficiency
+      best_prev_cost = path_cost_[cur_path][prev_y][prev_x][0];
+
+      // For each possible disparity value
+      for (unsigned int d = 0; d < disparity_range_; d++)
+      {
+        // Get the pixel cost for current pixel at current disparity
+        unsigned long pixel_cost = cost_[cur_y][cur_x][d];
+
+        prev_cost = path_cost_[cur_path][prev_y][prev_x][d];
+
+        // Calculate costs with different penalties
+        no_penalty_cost = prev_cost;
+
+        // Small penalty cost for disparity changes of 1
+        small_penalty_cost = p1_;
+        if (d > 0)
+          small_penalty_cost += path_cost_[cur_path][prev_y][prev_x][d - 1];
+        else
+          small_penalty_cost += prev_cost;
+
+        if (d < disparity_range_ - 1)
+          small_penalty_cost = std::min(small_penalty_cost, p1_ + path_cost_[cur_path][prev_y][prev_x][d + 1]);
+
+        // Big penalty cost for larger disparity changes
+        big_penalty_cost = p2_ + best_prev_cost;
+
+        // Take the minimum of all costs
+        penalty_cost = std::min(no_penalty_cost, std::min(small_penalty_cost, big_penalty_cost));
+
+        // Compute final path cost for this pixel, disparity and direction
+        path_cost_[cur_path][cur_y][cur_x][d] = pixel_cost + penalty_cost;
+      }
     }
   }
-}
 
-  
   void SGM::aggregation()
   {
-    
-    //for all defined paths
-    for(int cur_path = 0; cur_path < PATHS_PER_SCAN; ++cur_path)
-    {
 
-      cout << "Processing path " << cur_path << endl;
+    // for all defined paths
+    for (int cur_path = 0; cur_path < PATHS_PER_SCAN; ++cur_path)
+    {
       //////////////////////////// Code to be completed (2/4) /////////////////////////////////
-      // Initialize the variables start_x, start_y, end_x, end_y, step_x, step_y with the 
+      // Initialize the variables start_x, start_y, end_x, end_y, step_x, step_y with the
       // right values, after that uncomment the code below
       /////////////////////////////////////////////////////////////////////////////////////////
 
       int dir_x = paths_[cur_path].direction_x;
       int dir_y = paths_[cur_path].direction_y;
+
+      cout << "Processing path " << cur_path << endl;
       cout << "dir_x: " << dir_x << " dir_y: " << dir_y << endl;
+
       int start_x, start_y, end_x, end_y, step_x, step_y;
-       // Use the pre-defined path boundaries instead of 0 and width_/height_-1
-       if (dir_x > 0) {
-        start_x = pw_.west;  // Start from west boundary
-        end_x = pw_.east ; // Include the east boundary
+      // Use the pre-defined path boundaries instead of 0 and width_/height_-1
+      if (dir_x > 0)
+      {
+        start_x = pw_.west; // Start from west boundary
+        end_x = pw_.east;   // Include the east boundary
         step_x = 1;
-      } else if (dir_x < 0) {
-        start_x = pw_.east;  // Start from east boundary
-        end_x = pw_.west ; // Include the west boundary
+      }
+      else if (dir_x < 0)
+      {
+        start_x = pw_.east; // Start from east boundary
+        end_x = pw_.west;   // Include the west boundary
         step_x = -1;
-      } else {
+      }
+      else
+      {
         // If no x movement, still scan from west to east
         start_x = pw_.west;
         end_x = pw_.east;
         step_x = 1;
       }
-      
-      if (dir_y > 0) {
-        start_y = pw_.north;  // Start from north boundary
-        end_y = pw_.south; // Include the south boundary
-        step_y = 1;
-      } else if (dir_y < 0) {
-        start_y = pw_.south;  // Start from south boundary
-        end_y = pw_.north ; // Include the north boundary
-        step_y = -1;
-      } else {
-        // If no y movement, still scan from north to south
-        start_y = pw_.north;
-        end_y = pw_.south ;
+
+      if (dir_y > 0)
+      {
+        start_y = pw_.north; // Start from north boundary
+        end_y = pw_.south;   // Include the south boundary
         step_y = 1;
       }
-      cout << "start_x: " << start_x << " end_x: " << end_x << " step_x: " << step_x << endl;
-      cout << "start_y: " << start_y << " end_y: " << end_y << " step_y: " << step_y << endl;
-      
-      for(int y = start_y; y != end_y; y += step_y)
+      else if (dir_y < 0)
       {
-        for(int x = start_x; x != end_x; x += step_x)
+        start_y = pw_.south; // Start from south boundary
+        end_y = pw_.north;   // Include the north boundary
+        step_y = -1;
+      }
+      else
+      {
+        // If no y movement, still scan from north to south
+        start_y = pw_.north;
+        end_y = pw_.south;
+        step_y = 1;
+      }
+
+      for (int y = start_y; y != end_y; y += step_y)
+      {
+        for (int x = start_x; x != end_x; x += step_x)
         {
           compute_path_cost(dir_y, dir_x, y, x, cur_path);
         }
       }
 
-      
       /////////////////////////////////////////////////////////////////////////////////////////
     }
-    
+
     float alpha = (PATHS_PER_SCAN - 1) / static_cast<float>(PATHS_PER_SCAN);
-    //aggregate the costs
+    // aggregate the costs
     for (int row = 0; row < height_; ++row)
     {
       for (int col = 0; col < width_; ++col)
       {
-        for(int path = 0; path < PATHS_PER_SCAN; path++)
+        for (int path = 0; path < PATHS_PER_SCAN; path++)
         {
           unsigned long min_on_path = path_cost_[path][row][col][0];
-          int disp =  0;
+          int disp = 0;
 
-          for(unsigned int d = 0; d<disparity_range_; d++)
+          for (unsigned int d = 0; d < disparity_range_; d++)
           {
             aggr_cost_[row][col][d] += path_cost_[path][row][col][d];
-            if (path_cost_[path][row][col][d]<min_on_path)
-              {
-                min_on_path = path_cost_[path][row][col][d];
-                disp = d;
-              }
-
+            if (path_cost_[path][row][col][d] < min_on_path)
+            {
+              min_on_path = path_cost_[path][row][col][d];
+              disp = d;
+            }
           }
           inv_confidence_[row][col] += (min_on_path - alpha * cost_[row][col][disp]);
-
         }
       }
     }
-
   }
-
 
   void SGM::compute_disparity()
   {
-      calculate_cost_hamming();
-      aggregation();
-      cout <<"\nAggregating costs" <<endl;
-      disp_ = Mat(Size(width_, height_), CV_8UC1, Scalar::all(0));
-      int n_valid = 0;
+    calculate_cost_hamming();
+    aggregation();
+    cout << "\nAggregating costs" << endl;
+    disp_ = Mat(Size(width_, height_), CV_8UC1, Scalar::all(0));
+    int n_valid = 0;
 
-      int estimated_capacity = (width_ * height_) / 3;  // Assume roughly 1/3 of pixels have good confidence
-      Eigen::VectorXf sgm_disparities(estimated_capacity);
-      Eigen::VectorXf mono_disparities(estimated_capacity);
+    int estimated_capacity = (width_ * height_) / 3; // Assume roughly 1/3 of pixels have good confidence
+    Eigen::VectorXf sgm_disparities(estimated_capacity);
+    Eigen::VectorXf mono_disparities(estimated_capacity);
 
+    for (int row = 0; row < height_; ++row)
+    {
+      for (int col = 0; col < width_; ++col)
+      {
+        unsigned long smallest_cost = aggr_cost_[row][col][0];
+        int smallest_disparity = 0;
+        for (int d = disparity_range_ - 1; d >= 0; --d)
+        {
+
+          if (aggr_cost_[row][col][d] < smallest_cost)
+          {
+            smallest_cost = aggr_cost_[row][col][d];
+            smallest_disparity = d;
+          }
+        }
+        inv_confidence_[row][col] = smallest_cost - inv_confidence_[row][col];
+
+        // If the following condition is true, the disparity at position (row, col) has a good confidence
+        if (inv_confidence_[row][col] > 0 && inv_confidence_[row][col] < conf_thresh_)
+        {
+          //////////////////////////// Code to be completed (3/4) /////////////////////////////////
+          // Since the disparity at position (row, col) has a good confidence, it can be added
+          // together with the corresponding unscaled disparity from the right-to-left initial
+          // guess mono_.at<uchar>(row, col) to the pool of disparity pairs that will be used
+          // to estimate the unknown scale factor.
+          /////////////////////////////////////////////////////////////////////////////////////////
+
+          // Resize vectors if needed (this is dynamic resizing)
+          if (n_valid >= sgm_disparities.size())
+          {
+            sgm_disparities.conservativeResize(sgm_disparities.size() * 2);
+            mono_disparities.conservativeResize(mono_disparities.size() * 2);
+          }
+
+          // Store the SGM disparity and the mono disparity directly in Eigen vectors
+          sgm_disparities(n_valid) = static_cast<float>(smallest_disparity);
+          mono_disparities(n_valid) = static_cast<float>(mono_.at<uchar>(row, col));
+          n_valid++;
+
+          /////////////////////////////////////////////////////////////////////////////////////////
+        }
+
+        disp_.at<uchar>(row, col) = smallest_disparity * 255.0 / disparity_range_;
+      }
+    }
+
+    //////////////////////////// Code to be completed (4/4) /////////////////////////////////
+    // Using all the disparity pairs accumulated in the previous step,
+    // estimate the unknown scaling factor and scale the initial guess disparities
+    // accordingly. Finally,  and use them to improve/replace the low-confidence SGM
+    // disparities.
+    /////////////////////////////////////////////////////////////////////////////////////////
+
+    if (n_valid > 0)
+    {
+      // Trim vectors to actual size used
+      sgm_disparities.conservativeResize(n_valid);
+      mono_disparities.conservativeResize(n_valid);
+
+      cout << "Number of valid disparity pairs: " << n_valid << endl;
+
+      // Construct the matrices A and b for the least squares problem directly
+      Eigen::MatrixXf A(n_valid, 2);
+      Eigen::VectorXf b = sgm_disparities; // Already in the right format
+
+      // Set up matrix A more efficiently
+      A.col(0) = mono_disparities;
+      A.col(1).setOnes();
+
+      // Solve for x = [h, k]^T using the least squares formula
+      Eigen::Vector2f x = (A.transpose() * A).inverse() * A.transpose() * b;
+
+      float h = x(0); // Scaling factor
+      float k = x(1); // Offset
+
+      // Adjust low-confidence disparities using the scaling factor
       for (int row = 0; row < height_; ++row)
       {
-          for (int col = 0; col < width_; ++col)
+        for (int col = 0; col < width_; ++col)
+        {
+          if (inv_confidence_[row][col] <= 0 || inv_confidence_[row][col] >= conf_thresh_)
           {
-              unsigned long smallest_cost = aggr_cost_[row][col][0];
-              int smallest_disparity = 0;
-              for(int d=disparity_range_-1; d>=0; --d)
-              {
-
-                  if(aggr_cost_[row][col][d]<smallest_cost)
-                  {
-                      smallest_cost = aggr_cost_[row][col][d];
-                      smallest_disparity = d; 
-
-                  }
-              }
-              inv_confidence_[row][col] = smallest_cost - inv_confidence_[row][col];
-
-              // If the following condition is true, the disparity at position (row, col) has a good confidence
-              if (inv_confidence_[row][col] > 0 && inv_confidence_[row][col] <conf_thresh_)
-              {
-                //////////////////////////// Code to be completed (3/4) /////////////////////////////////
-                // Since the disparity at position (row, col) has a good confidence, it can be added 
-                // together with the corresponding unscaled disparity from the right-to-left initial 
-                // guess mono_.at<uchar>(row, col) to the pool of disparity pairs that will be used 
-                // to estimate the unknown scale factor.    
-                /////////////////////////////////////////////////////////////////////////////////////////
-              
-                  // Resize vectors if needed (this is dynamic resizing)
-                if (n_valid >= sgm_disparities.size()) {
-                  sgm_disparities.conservativeResize(sgm_disparities.size() * 2);
-                  mono_disparities.conservativeResize(mono_disparities.size() * 2);
-              }
-              
-              // Store the SGM disparity and the mono disparity directly in Eigen vectors
-              sgm_disparities(n_valid) = static_cast<float>(smallest_disparity);
-              mono_disparities(n_valid) = static_cast<float>(mono_.at<uchar>(row, col));
-              n_valid++;
-      
-    
-                /////////////////////////////////////////////////////////////////////////////////////////
-              }
-
-              disp_.at<uchar>(row, col) = smallest_disparity*255.0/disparity_range_;
-
+            float unscaled_disparity = static_cast<float>(mono_.at<uchar>(row, col));
+            float adjusted_disparity = h * unscaled_disparity + k;
+            disp_.at<uchar>(row, col) = static_cast<uchar>(adjusted_disparity * 255.0 / disparity_range_);
           }
+        }
       }
-
-      //////////////////////////// Code to be completed (4/4) /////////////////////////////////
-      // Using all the disparity pairs accumulated in the previous step, 
-      // estimate the unknown scaling factor and scale the initial guess disparities 
-      // accordingly. Finally,  and use them to improve/replace the low-confidence SGM 
-      // disparities.
-      /////////////////////////////////////////////////////////////////////////////////////////
-
-      if (n_valid > 0)
-      {
-          // Trim vectors to actual size used
-          sgm_disparities.conservativeResize(n_valid);
-          mono_disparities.conservativeResize(n_valid);
-          
-          cout << "Number of valid disparity pairs: " << n_valid << endl;
-  
-          // Construct the matrices A and b for the least squares problem directly
-          Eigen::MatrixXf A(n_valid, 2);
-          Eigen::VectorXf b = sgm_disparities;  // Already in the right format
-  
-          // Set up matrix A more efficiently
-          A.col(0) = mono_disparities;
-          A.col(1).setOnes();
-  
-          // Solve for x = [h, k]^T using the least squares formula
-          Eigen::Vector2f x = (A.transpose() * A).inverse() * A.transpose() * b;
-  
-          float h = x(0); // Scaling factor
-          float k = x(1); // Offset
-  
-          // Adjust low-confidence disparities using the scaling factor
-          for (int row = 0; row < height_; ++row)
-          {
-              for (int col = 0; col < width_; ++col)
-              {
-                  if (inv_confidence_[row][col] <= 0 || inv_confidence_[row][col] >= conf_thresh_)
-                  {
-                      float unscaled_disparity = static_cast<float>(mono_.at<uchar>(row, col));
-                      float adjusted_disparity = h * unscaled_disparity + k;
-                      disp_.at<uchar>(row, col) = static_cast<uchar>(adjusted_disparity * 255.0 / disparity_range_);
-                  }
-              }
-          }
-      }
-      
-      
-      
-      
-      /////////////////////////////////////////////////////////////////////////////////////////
-
+    }
+    /////////////////////////////////////////////////////////////////////////////////////////
   }
 
   float SGM::compute_mse(const cv::Mat &gt)
