@@ -427,6 +427,8 @@ namespace sgm
         Eigen::MatrixXf A(n_valid, 2); // A is an n x 2 matrix
         Eigen::VectorXf b(n_valid);   // b is an n x 1 vector
 
+        cout << "Number of valid disparity pairs: " << n_valid << endl;
+
         for (int i = 0; i < n_valid; ++i)
         {
             A(i, 0) = mono_disparities[i]; // First column is mono_disparities
