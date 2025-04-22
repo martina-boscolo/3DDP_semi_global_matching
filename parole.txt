@@ -21,3 +21,10 @@ you also have to provide a small reporto
 explaining aproach and problem incountred, 
 provide numerical result and qualitative results like images 
 important not to be slow otherwise slightly pealized 
+
+-----------------------------
+opzione_ creare delle funzioni 
+
+provare con dei livelli diversi di disparity per vedere mse migliora o peggiora. anche così da poter aggiungere qualcosa al report 
+
+ci sono i nomi da sistemare e controllare che le parti di funzioni già presenti non siano cambiate 

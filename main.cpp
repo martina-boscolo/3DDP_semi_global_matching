@@ -1,6 +1,6 @@
 #include "sgm.h"
 
-
+#include <chrono> // Add this for timing functionality
 
 int main(int argc, char** argv) {
 
@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-
+    auto start_time = std::chrono::high_resolution_clock::now();
 
     sgm::SGM sgm(disparityRange);
     sgm.set(firstImage, secondImage, monoRight);
@@ -39,6 +39,13 @@ int main(int argc, char** argv) {
     sgm.save_disparity(outputFileName);
     //sgm.save_confidence(outputFileName);
     std::cerr<<"Right Image MSE error: "<<sgm.compute_mse(gt)<<std::endl;
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end_time - start_time;
+    
+    // Print timing information
+    std::cout << "SGM processing completed in " << elapsed.count() << " seconds" << std::endl;
+    
 
     return 0;
 }

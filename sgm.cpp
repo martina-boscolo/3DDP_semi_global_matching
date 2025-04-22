@@ -59,6 +59,7 @@ namespace sgm
     pw_.south = height_ - window_height_/2;
     pw_.west = window_width_/2;
     pw_.east = width_ - window_height_/2;
+    cout<< "north: " << pw_.north << " south: " << pw_.south << " west: " << pw_.west << " east: " << pw_.east << endl;
     init_paths();
     cost_.resize(height_, ul_array2D(width_, ul_array(disparity_range_)));
     inv_confidence_.resize(height_, vector<float>(width_));
@@ -78,8 +79,12 @@ namespace sgm
         if (i==0 && j==0)
           continue;
         paths_.push_back({directions[i], directions[j]});
+        cout << "Path " << paths_.size()-1 << ": ";
+        cout << paths_[paths_.size()-1].direction_x << " " << paths_[paths_.size()-1].direction_y << endl;
+        
       }
     }
+
   }
 
   //compute costs and fill volume cost cost_
@@ -193,66 +198,74 @@ namespace sgm
     // tensor (already allocated) path_cost_[cur_path][cur_y][cur_x][d], for all possible d.
     /////////////////////////////////////////////////////////////////////////////////////////
 
-    // if the processed pixel is the first:
-    if(cur_y == pw_.north || cur_y == pw_.south || cur_x == pw_.east || cur_x == pw_.west)
+  // if the processed pixel is the first:
+  if(cur_y == pw_.north || cur_y == pw_.south || cur_x == pw_.east || cur_x == pw_.west)
+  {
+    // For first pixels in a path, we initialize path costs with the matching costs
+    // No aggregation from previous pixels since this is the beginning of the path
+    for (int d = 0; d < disparity_range_; d++)
     {
-      //Please fill me!
-      // Simply copy the cost from C(p, d) for all disparities
-      for (int d = 0; d < disparity_range_; ++d)
-      {
-          path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d];
+      path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d];
+    }
+  }
+  else
+  {
+    // For non-first pixels, we need to aggregate costs from previous pixel
+    int prev_y = cur_y - direction_y;
+    int prev_x = cur_x - direction_x;
+
+    //TODO: remo this, no more needed after fixing aggregation    
+    // Check boundaries to prevent segmentation fault
+    if (prev_y < 0 || prev_y >= height_ || prev_x < 0 || prev_x >= width_) {
+    cout << "Out of bounds: cur_y=" << cur_y << ", cur_x=" << cur_x << ", prev_y=" << prev_y << ", prev_x=" << prev_x << endl;
+      // Handle edge case - just copy costs without aggregation
+      for (int d = 0; d < disparity_range_; d++) {
+        path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d];
       }
       return;
     }
-    else
-    {
-      //Please fill me!
-      //look up the previous pixel in the path direction
-      // and compute the cost for all disparities
-     // small penalty if disparity conly 1
-      // and big penalty if disparity is more than 1
-          // Look up the previous pixel in the path direction
-    int prev_y = cur_y + direction_y;
-    int prev_x = cur_x + direction_x;
 
-    if (prev_y < 0 || prev_y >= height_ || prev_x < 0 || prev_x >= width_) {
-        return; // Skip processing if out of bounds
-    }
-
-    cout << "cur_y: " << cur_y << ", cur_x: " << cur_x << endl;
-    cout << "prev_y: " << prev_y << ", prev_x: " << prev_x << endl;
-
-    // Find the minimum cost for the previous pixel across all disparities
-    unsigned long min_prev_cost = *min_element(path_cost_[cur_path][prev_y][prev_x].begin(),
-                                               path_cost_[cur_path][prev_y][prev_x].end());
-
-    // Compute the cost for all disparities
-    for (int d = 0; d < disparity_range_; ++d)
-    {
-        // Lr(p-r, d)
-        unsigned long prev_d = path_cost_[cur_path][prev_y][prev_x][d];
-
-        // Lr(p-r, d-1)
-        unsigned long prev_d_minus = (d > 0) ? path_cost_[cur_path][prev_y][prev_x][d - 1] + p1_ : ULONG_MAX;
-
-        // Lr(p-r, d+1)
-        unsigned long prev_d_plus = (d < disparity_range_ - 1) ? path_cost_[cur_path][prev_y][prev_x][d + 1] + p1_ : ULONG_MAX;
-
-        // Lr(p-r, k) + P2 (already have min_prev_cost)
-        unsigned long prev_other = min_prev_cost + p2_;
-
-        // Compute the minimum cost for the current disparity
-        unsigned long prev_min = min({prev_d, prev_d_minus, prev_d_plus, prev_other});
-
-        // Subtract min_k L_r(p-r, k) and add the data cost
-        path_cost_[cur_path][cur_y][cur_x][d] = cost_[cur_y][cur_x][d] + prev_min - min_prev_cost;
-    }
-    }
+    // Pre-compute the best previous cost for efficiency
+    best_prev_cost = path_cost_[cur_path][prev_y][prev_x][0];
     
-    cout <<"\ncompute_path_cost" <<endl;
-    
-    /////////////////////////////////////////////////////////////////////////////////////////
+    // For each possible disparity value
+    for (int d = 0; d < disparity_range_; d++)
+    {
+      // Get the pixel cost for current pixel at current disparity
+      unsigned long pixel_cost = cost_[cur_y][cur_x][d];
+      
+      // Find minimum cost from previous pixel across all disparities
+     // best_prev_cost = path_cost_[cur_path][prev_y][prev_x][0];
+      // for (int d_p = 1; d_p < disparity_range_; d_p++)
+      // {
+      //   if (path_cost_[cur_path][prev_y][prev_x][d_p] < best_prev_cost)
+      //     best_prev_cost = path_cost_[cur_path][prev_y][prev_x][d_p];
+      // }
+      
+      // Calculate costs with different penalties
+      no_penalty_cost = path_cost_[cur_path][prev_y][prev_x][d];
+      
+      // Small penalty cost for disparity changes of 1
+      small_penalty_cost = p1_;
+      if (d > 0)
+        small_penalty_cost += path_cost_[cur_path][prev_y][prev_x][d-1];
+      else
+        small_penalty_cost += path_cost_[cur_path][prev_y][prev_x][d];
+        
+      if (d < disparity_range_ - 1)
+        small_penalty_cost = std::min(small_penalty_cost, p1_ + path_cost_[cur_path][prev_y][prev_x][d+1]);
+      
+      // Big penalty cost for larger disparity changes
+      big_penalty_cost = p2_ + best_prev_cost;
+      
+      // Take the minimum of all costs
+      penalty_cost = std::min(no_penalty_cost, std::min(small_penalty_cost, big_penalty_cost));
+      
+      // Compute final path cost for this pixel, disparity and direction
+      path_cost_[cur_path][cur_y][cur_x][d] = pixel_cost + penalty_cost;
+    }
   }
+}
 
   
   void SGM::aggregation()
@@ -262,6 +275,7 @@ namespace sgm
     for(int cur_path = 0; cur_path < PATHS_PER_SCAN; ++cur_path)
     {
 
+      cout << "Processing path " << cur_path << endl;
       //////////////////////////// Code to be completed (2/4) /////////////////////////////////
       // Initialize the variables start_x, start_y, end_x, end_y, step_x, step_y with the 
       // right values, after that uncomment the code below
@@ -269,43 +283,49 @@ namespace sgm
 
       int dir_x = paths_[cur_path].direction_x;
       int dir_y = paths_[cur_path].direction_y;
-      
+      cout << "dir_x: " << dir_x << " dir_y: " << dir_y << endl;
       int start_x, start_y, end_x, end_y, step_x, step_y;
-      if (dir_x == 1) {
-        start_x = 0;
-        end_x = width_;
+       // Use the pre-defined path boundaries instead of 0 and width_/height_-1
+       if (dir_x > 0) {
+        start_x = pw_.west;  // Start from west boundary
+        end_x = pw_.east ; // Include the east boundary
         step_x = 1;
-    } else if (dir_x == -1) {
-        start_x = width_ - 1;
-        end_x = -1;
+      } else if (dir_x < 0) {
+        start_x = pw_.east;  // Start from east boundary
+        end_x = pw_.west ; // Include the west boundary
         step_x = -1;
-    } else {
-        start_x = 0;
-        end_x = width_;
+      } else {
+        // If no x movement, still scan from west to east
+        start_x = pw_.west;
+        end_x = pw_.east;
         step_x = 1;
-    }
-
-    if (dir_y == 1) {
-        start_y = 0;
-        end_y = height_;
-        step_y = 1;
-    } else if (dir_y == -1) {
-        start_y = height_ - 1;
-        end_y = -1;
-        step_y = -1;
-    } else {
-        start_y = 0;
-        end_y = height_;
-        step_y = 1;
-    }
+      }
       
-     for(int y = start_y; y != end_y ; y+=step_y)
-     {
-       for(int x = start_x; x != end_x ; x+=step_x)
-       {
-         compute_path_cost(dir_y, dir_x, y, x, cur_path);
-       }
-     }
+      if (dir_y > 0) {
+        start_y = pw_.north;  // Start from north boundary
+        end_y = pw_.south; // Include the south boundary
+        step_y = 1;
+      } else if (dir_y < 0) {
+        start_y = pw_.south;  // Start from south boundary
+        end_y = pw_.north ; // Include the north boundary
+        step_y = -1;
+      } else {
+        // If no y movement, still scan from north to south
+        start_y = pw_.north;
+        end_y = pw_.south ;
+        step_y = 1;
+      }
+      cout << "start_x: " << start_x << " end_x: " << end_x << " step_x: " << step_x << endl;
+      cout << "start_y: " << start_y << " end_y: " << end_y << " step_y: " << step_y << endl;
+      
+      for(int y = start_y; y != end_y; y += step_y)
+      {
+        for(int x = start_x; x != end_x; x += step_x)
+        {
+          compute_path_cost(dir_y, dir_x, y, x, cur_path);
+        }
+      }
+
       
       /////////////////////////////////////////////////////////////////////////////////////////
     }
@@ -349,9 +369,8 @@ namespace sgm
       int n_valid = 0;
 
       // To store disparity pairs for scaling factor estimation
-    vector<float> d_sgm;  // High-confidence disparities from SGM
-    vector<float> d_mono; // Corresponding unscaled disparities from mono_
-
+      vector<float> sgm_disparities; 
+      vector<float> mono_disparities; 
 
       for (int row = 0; row < height_; ++row)
       {
@@ -380,15 +399,13 @@ namespace sgm
                 // guess mono_.at<uchar>(row, col) to the pool of disparity pairs that will be used 
                 // to estimate the unknown scale factor.    
                 /////////////////////////////////////////////////////////////////////////////////////////
-
-                
-                // Add the pair (d_sgm, d_mono) to the pool for scaling factor estimation
-                float scaled_disparity = static_cast<float>(smallest_disparity);
-                float unscaled_disparity = static_cast<float>(mono_.at<uchar>(row, col));
-                d_sgm.push_back(scaled_disparity);
-                d_mono.push_back(unscaled_disparity);
-                n_valid++;
-                
+              
+                  // Store the SGM disparity and the mono disparity as a pair
+                  sgm_disparities.push_back(smallest_disparity);
+                  mono_disparities.push_back(mono_.at<uchar>(row, col));
+                  n_valid++;  // Count valid disparity pairs
+      
+    
                 /////////////////////////////////////////////////////////////////////////////////////////
               }
 
@@ -404,7 +421,7 @@ namespace sgm
       // disparities.
       /////////////////////////////////////////////////////////////////////////////////////////
 
-      if (!d_sgm.empty())
+      if (!sgm_disparities.empty())
     {
         // Construct the matrices A and b for the least squares problem
         Eigen::MatrixXf A(n_valid, 2); // A is an n x 2 matrix
@@ -412,9 +429,9 @@ namespace sgm
 
         for (int i = 0; i < n_valid; ++i)
         {
-            A(i, 0) = d_mono[i]; // First column is d_mono
+            A(i, 0) = mono_disparities[i]; // First column is mono_disparities
             A(i, 1) = 1.0f;      // Second column is 1
-            b(i) = d_sgm[i];     // b is d_sgm
+            b(i) = sgm_disparities[i];     // b is sgm_disparities
         }
 
         // Solve for x = [h, k]^T using the least squares formula
