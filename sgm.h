@@ -1,9 +1,11 @@
 #pragma once
 #include <iostream>
+#include <string>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include "opencv2/imgproc/imgproc.hpp"
+#include <opencv2/photo.hpp>
 
 #define DEBUG false
 
@@ -39,7 +41,7 @@ namespace sgm
 
   public:
     SGM(unsigned int disparity_range, unsigned int p1=3, unsigned int p2=40, float conf_thresh=20.0, unsigned int window_height=3, unsigned window_width_=3);
-    void set(const  cv::Mat &left_img, const  cv::Mat &right_img, const  cv::Mat &right_mono);
+    void set(const  cv::Mat &left_img, const  cv::Mat &right_img, const  cv::Mat &right_mono, const  cv::Mat &left_mono);
     void compute_disparity();
     void save_disparity(char* out_file_name);
     //void save_confidence(char* out_file_name);
@@ -62,6 +64,7 @@ namespace sgm
       unsigned window_width_;
       cv::Mat disp_;
       cv::Mat mono_;
+      cv::Mat left_mono_;
       cv::Mat views_[2];
       vector<path> paths_;
       processing_window pw_;
@@ -72,6 +75,13 @@ namespace sgm
 
   };
 }
+
+
+// functions for refinement using left_mono
+void fillHolesInDisparity(cv::Mat &disparity);
+void refineRightDisparity(const cv::Mat &disp_left, const cv::Mat &disp_right,
+                           cv::Mat &refined_disp_right, float max_disp,
+                           float threshold);
 
 
 
