@@ -542,6 +542,4 @@ void fillHolesInDisparity(cv::Mat &disparity)
 
   filled.copyTo(disparity, invalid_mask);
 
-  // smooth the result
-  cv::medianBlur(disparity, disparity, 3);
 }

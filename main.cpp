@@ -50,7 +50,7 @@ int main(int argc, char **argv)
     cout << "******** round 2/2: SGM with left mono refinement ********" << endl;
 
     // using left mono to refine the right mono disparity map
-    refineRightDisparity(monoLeft, monoRight, refined_disp_right, disparityRange, 120.0f);
+    refineRightDisparity(monoLeft, monoRight, refined_disp_right, disparityRange, 90.0f);
     fillHolesInDisparity(refined_disp_right);
     imwrite("refined_disp_right.png", refined_disp_right);
 
